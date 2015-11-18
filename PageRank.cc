@@ -8,6 +8,9 @@
 #include <algorithm>
 #include <map>
 
+#include <omp.h>
+#define CHUNKSIZE 80
+
 using namespace std;
 
 class nodo{
@@ -39,27 +42,30 @@ bool comparator2(nodo a,nodo b)
 
 double pageRank(map<int,vector<int>> nodos, map<int,double> probabilidades, int nodo, double d){
 	double PR=0;
+	double result=0;
 
 	for(map<int,vector<int>>::iterator indx=nodos.begin();indx!=nodos.end();++indx){
-		for(const int &i : indx->second){					//itero los apuntadores de los nodos
-			if(i == nodo){						//busco el nodo
-				PR += float(probabilidades[indx->first]) / float(indx->second.size());
+		if(indx->second.size() != 0){
+
+			for(const int &i : indx->second){					//itero los apuntadores de los nodos
+				if(i == nodo){	
+					PR += float(probabilidades[indx->first]) / float(indx->second.size());
+					//cout<<nodo<<"..."<<indx->first<<"++++"<<probabilidades[indx->first]<<endl;
+				}
 			}
+
 		}
+			
 	}
 
-	PR = (float(1-d)/float( probabilidades.size()) ) + d * PR;
-	return PR;
+
+
+	result = (float((1.0-d))/float( nodos.size()) ) + d*PR;
+	return result;
 
 }
 
-map<int,double> initProbabilidades(map<int, vector<int>> nodos, double initValue){
-	map<int,double> probabilidades;
-	for(map<int,vector<int>>::iterator indx=nodos.begin();indx!=nodos.end();++indx){
-		probabilidades[indx->first]=initValue;
-	}
-	return probabilidades;
-}
+
 
 map<int, vector<int>> loadFile(string name) {
 	int index,post;
@@ -69,6 +75,10 @@ map<int, vector<int>> loadFile(string name) {
 	while(fe >>index >> post){
 	  dic[index].push_back(post);
 	  dic[post].push_back(index);
+	  /*if(dic[post].size() == 0){
+	  	//dic[post];//dic[post].push_back(index);
+	  }*/
+	  
 	  //cout<<index<<":"<< post<<endl;
 	}
 	fe.close();
@@ -78,11 +88,15 @@ map<int, vector<int>> loadFile(string name) {
 
 
 int main(int argc, char **argv) {
+
+
 	int N;			
 	double d=0.85;
 	string pivo="";
 	map<int,vector<int>>  nodos;
 	map<int,double>  probabilidades;
+	map<int,double>  probabilidades2;
+
 	bool flag=true;
 	vector<nodo> results;
 
@@ -92,11 +106,36 @@ int main(int argc, char **argv) {
 
 	double probInit = float(1)/float(N);
 	cout<<"prob init->"<<probInit<<endl;
-	probabilidades = initProbabilidades(nodos,probInit);	//asigno probabilidades iguales
+	
+	bool flagone=true;
+	for(map<int,vector<int>>::iterator indx=nodos.begin();indx!=nodos.end();++indx){
+		if(flagone){
+			probabilidades[indx->first]=1;
+			flagone=false;
+		}else{
+			probabilidades[indx->first]=0;
+		}
+		//cout<<indx->first<<"++++"<<probabilidades[indx->first]<<endl;
+
+	}
+
 
 	cout<<"Probabilidades= "<<probabilidades.size()<<endl;
 
-	clock_t t;
+	
+
+
+
+ 
+
+
+	int nthreads, tid, i, chunk;
+	chunk = CHUNKSIZE;
+
+	map<int,vector<int>>::iterator ind;
+	ind=nodos.begin();
+
+  	clock_t t;
    	t = clock();
 
 	int iteraciones=0;
@@ -104,24 +143,50 @@ int main(int argc, char **argv) {
 		int convergentes=0;
 		double sum=0;
 
-		for (map<int,vector<int>>::iterator indx=nodos.begin(); indx!=nodos.end(); ++indx ) {
-			double anterior= probabilidades[indx->first];
 
-			probabilidades[indx->first] = pageRank(nodos, probabilidades, indx->first, d);	//PageRank
-			//cout<<probabilidades[indx->first]<<"-"<<anterior<<endl;
-			sum += probabilidades[indx->first];
-			double res= abs(probabilidades[indx->first] -anterior);
-			//cout<<sum<<endl;
-			if( res < 0.00000001){
-				convergentes++;
-				//cout<<"convergentes : "<<convergentes<<endl;
-				if(convergentes >= N){
-					flag=false;
-					break;
+		//#pragma omp parallel shared(probabilidades,nodos,ind,convergentes,sum,N,d,nthreads,chunk) private(i,tid,anterior,res,auxp)
+		//{
+		    tid = omp_get_thread_num();
+		    if (tid == 0){
+		      nthreads = omp_get_num_threads();
+		      printf("Number of threads = %d\n", nthreads);
+
+		    }
+		    printf("Thread %d starting...\n",tid);
+
+		    //--------------------------------------------------------------------------
+		    //#pragma omp for reduction(+:sum,convergentes)
+		    for (i=0; i<N; i++){
+
+		    	auto indx = next(ind, i);
+		    	//cout<<indx->first<<endl;
+		    	double anterior= probabilidades[indx->first];
+		    	double auxp = pageRank(nodos, probabilidades, indx->first, d);	//PageRank
+				probabilidades2[indx->first] = auxp;
+				//cout<<probabilidades2[indx->first]<<"-"<<anterior<<endl;
+				sum += auxp;
+				double res= abs(auxp -anterior);
+				//cout<<sum<<endl;
+				if( res < 0.00000001){
+					convergentes++;
 				}
-			}
+				//printf("Thread %d: probabilidades[%d]= %f\n",tid,indx->first,probabilidades[indx->first]);
+		    }
+		//}  
+
+
+		if(convergentes >= N){
+			flag=false;
+			break;
+		}
+
+
+
+		for (map<int,double>::iterator indx=probabilidades2.begin(); indx!=probabilidades2.end(); ++indx ) {
+			probabilidades[indx->first] = indx->second;
 			//cout<<indx->first<<","<<probabilidades[indx->first]<<endl;
 		}
+
 		iteraciones++;
 		cout<<"Iteracion "<<iteraciones<<" suma de probabilidades = "<<sum<<endl;
 	}
@@ -146,6 +211,16 @@ int main(int argc, char **argv) {
 	return 0;
 }
 
+
+/*
+secuencial 35 iteraciones: 55 min 27 sec
+secuencial 35 iteraciones: 52 min 54 sec
+paralelo chunksize=10 static 45 iteraciones: 27 min 30 sec -----12296.817383 seconds
+paralelo chunksize=80 static 43 iteraciones: 26 min 10 sec -----11553.088867 
+paralelo chunksize=80 static? 28 iteraciones: 16 min 32 sec -----7447.104980
+
+paralelo chunksize=10 dynamic 61 iteraciones: >35 min 30 sec -----12296.817383 seconds
+*/
 
 
 
