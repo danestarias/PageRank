@@ -58,8 +58,6 @@ double pageRank(map<int,vector<int>> nodos, map<int,double> probabilidades, int 
 			
 	}
 
-
-
 	result = (float((1.0-d))/float( nodos.size()) ) + d*PR;
 	return result;
 
@@ -116,21 +114,15 @@ int main(int argc, char **argv) {
 			probabilidades[indx->first]=0;
 		}
 		//cout<<indx->first<<"++++"<<probabilidades[indx->first]<<endl;
-
 	}
 
 
 	cout<<"Probabilidades= "<<probabilidades.size()<<endl;
 
-	
-
-
-
  
 
 
-	int nthreads, tid, i, chunk;
-	chunk = CHUNKSIZE;
+	int nthreads, tid, i;
 
 	map<int,vector<int>>::iterator ind;
 	ind=nodos.begin();
@@ -142,10 +134,14 @@ int main(int argc, char **argv) {
 	while(flag){
 		int convergentes=0;
 		double sum=0;
+		double error=0;
 
+		double res=0;
+		double anterior=0;
+		double auxp=0;
 
-		//#pragma omp parallel shared(probabilidades,nodos,ind,convergentes,sum,N,d,nthreads,chunk) private(i,tid,anterior,res,auxp)
-		//{
+		#pragma omp parallel shared(probabilidades,nodos,ind,convergentes,sum,N,d,nthreads) private(i,tid,res,anterior,auxp)
+		{
 		    tid = omp_get_thread_num();
 		    if (tid == 0){
 		      nthreads = omp_get_num_threads();
@@ -155,40 +151,37 @@ int main(int argc, char **argv) {
 		    printf("Thread %d starting...\n",tid);
 
 		    //--------------------------------------------------------------------------
-		    //#pragma omp for reduction(+:sum,convergentes)
+		    #pragma omp for reduction(+:sum,convergentes,error)
 		    for (i=0; i<N; i++){
 
 		    	auto indx = next(ind, i);
 		    	//cout<<indx->first<<endl;
-		    	double anterior= probabilidades[indx->first];
-		    	double auxp = pageRank(nodos, probabilidades, indx->first, d);	//PageRank
+		    	anterior= probabilidades[indx->first];
+		    	auxp = pageRank(nodos, probabilidades, indx->first, d);	//PageRank
 				probabilidades2[indx->first] = auxp;
 				//cout<<probabilidades2[indx->first]<<"-"<<anterior<<endl;
 				sum += auxp;
-				double res= abs(auxp -anterior);
+				res= abs(auxp -anterior);
+				error+= res;
 				//cout<<sum<<endl;
 				if( res < 0.00000001){
 					convergentes++;
 				}
 				//printf("Thread %d: probabilidades[%d]= %f\n",tid,indx->first,probabilidades[indx->first]);
 		    }
-		//}  
+		}  
 
 
 		if(convergentes >= N){
 			flag=false;
 			break;
 		}
+		//error = float(res)/float(N);
 
-
-
-		for (map<int,double>::iterator indx=probabilidades2.begin(); indx!=probabilidades2.end(); ++indx ) {
-			probabilidades[indx->first] = indx->second;
-			//cout<<indx->first<<","<<probabilidades[indx->first]<<endl;
-		}
+		probabilidades = probabilidades2;
 
 		iteraciones++;
-		cout<<"Iteracion "<<iteraciones<<" suma de probabilidades = "<<sum<<endl;
+		cout<<"Iteracion "<<iteraciones<<" error= "<<error<<" suma de probabilidades = "<<sum<<endl;
 	}
 
   	//guardo resultados finales en un vector para ordenarlo
