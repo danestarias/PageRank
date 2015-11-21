@@ -1,0 +1,16 @@
+CC=g++ -std=c++11 -Wall -fopenmp -L/home/yamith/zmq/lib -I/home/yamith/zmq/include
+LDFLAGS= -lpthread -lzmqpp -lzmq -lsodium -lsfml-graphics -lsfml-audio -lsfml-window -lsfml-system
+
+all: serverDistribuido workerDistribuido
+
+server: serverDistribuido.cc
+	$(CC) -o serverDistribuido serverDistribuido.cc $(LDFLAGS)
+
+worker: workerDistribuido.cc
+	$(CC) -o workerDistribuido workerDistribuido.cc $(LDFLAGS)
+	
+clean:
+	rm -f workerDistribuido serverDistribuido
+
+#export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/yamith/zmq/lib 		debian
+#export DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:/home/yamith/zmq/lib 	IOS
